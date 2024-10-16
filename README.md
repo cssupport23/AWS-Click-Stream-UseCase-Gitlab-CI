@@ -1,13 +1,21 @@
 # AWS ClickStream UseCase with Gitlab CI
-In this implementation, data flows from a Kinesis Firehose stream into an S3 bucket, and from there, it is ingested into Snowflake using Snowpipe for real-time data processing. The workflow starts with Kinesis Firehose, which is responsible for handling large-scale streaming data by buffering and delivering it to the specified S3 bucket. This eliminates the need for manually managing Kinesis Data Streams, as Firehose handles both delivery and transformation. 
+In this implementation, data flows from a **Kinesis Data Stream** to **Kinesis Firehose**, which delivers the data to an **S3 bucket**. The flow begins when a producer sends streaming events to the Kinesis Data Stream. Kinesis Firehose, configured as the delivery mechanism, collects these records and delivers them to the S3 bucket in JSON format. Firehose includes buffering options that control when and how the data is sent to S3, optimizing delivery based on size and time intervals.
 
-To ensure secure access to the data, an IAM user is configured with permissions to interact with the S3 bucket. This IAM user is used by Snowpipe to trigger an event-driven data ingestion process as soon as new data is written to the S3 bucket. Additionally,  CloudWatch Alarms are set up to monitor the health and success of the data ingestion process. The alarms monitor metrics such as the success rate of Firehose put records. If failures or performance degradation occur, the CloudWatch Alarm sends a notification through an SNS topic to alert relevant stakeholders.
+Once the data lands in the S3 bucket, **Snowpipe** is automatically triggered using S3 event notifications. These events are routed through an **SQS queue**, which is consumed by Snowflake to process the data. Snowflake's **Snowpipe** utilizes an IAM user with programmatic access, specifically granted permission to access the required S3 resources. This IAM user's role is limited to actions like `s3:GetObject` and `s3:ListBucket` on the specific S3 path containing the data.
 
-A CloudWatch Dashboard is configured to visualize important metrics such as Kinesis Firehose success rates.
+To ingest data into Snowflake, the `COPY INTO` statement with `MATCH_BY_COLUMN_NAME = 'CASE_INSENSITIVE'` ensures that the incoming JSON data's fields are correctly mapped to Snowflake table columns, even if there are case differences between the JSON keys and table column names. Additionally, `STRIP_OUTER_ARRAY` is used to handle potential arrays in the JSON, making sure the data is loaded correctly. This implementation avoids using an AWS Lambda function for JSON preprocessing, keeping the pipeline simpler and reducing compute costs.
 
-Finally, Snowpipe is configured to use the `COPY INTO` command, which automatically ingests data from the S3 bucket into a Snowflake table. The `MATCH_BY_COLUMN_NAME` option ensures that the incoming JSON data matches the table's schema, even if there are case discrepancies. Additionally, the `STRIP_OUTER_ARRAY` file format option ensures proper handling of the JSON data, avoiding issues with nested structures and null values.
+Several AWS services are also integrated into this setup for observability and security:
 
-All the resouces are split into modules.
+1. **CloudWatch Logs**: CloudWatch collects logs from Kinesis Firehose for monitoring the delivery of data from Firehose to the S3 bucket. These logs provide visibility into the success or failure of records being delivered to S3 and enable troubleshooting if issues arise.
+
+2. **CloudWatch Alarms**: A **CloudWatch Metric Alarm** is configured to monitor the success rate of Firehose's `PutRecord` operations. If the success rate falls below a certain threshold, an alarm is triggered, notifying stakeholders via an **SNS topic**. This ensures timely alerts for any delivery failures.
+
+3. **CloudWatch Dashboards**: A CloudWatch Dashboard is used to visualize key metrics such as `PutRecord.Success` from Kinesis Firehose and logs from Snowpipe, giving a holistic view of the entire data ingestion process. This dashboard can display metrics like data delivery success, failure counts, and buffering behavior in Kinesis Firehose, providing valuable insights into system performance.
+
+4. **IAM Role and Policy**: An **IAM Role** is created for Kinesis Firehose with the necessary permissions to deliver data to the S3 bucket. Additionally, an IAM policy for the **Snowpipe IAM User** ensures that the user has access to the S3 bucket but with restricted permissions, following the principle of least privilege.
+
+This integrated setup leverages Kinesis Data Stream for real-time event ingestion, Kinesis Firehose for optimized delivery to S3, and Snowflake's Snowpipe for automatic ingestion into a database table. CloudWatch is used for monitoring, alerting, and logging to ensure operational health and visibility across the pipeline.
 
 ### S3 Bucket for Firehose Module
 
