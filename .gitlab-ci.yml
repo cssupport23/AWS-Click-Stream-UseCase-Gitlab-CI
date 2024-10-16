@@ -1,0 +1,65 @@
+image: 
+  name: hashicorp/terraform
+  entrypoint: [""]
+
+cache:
+  policy: pull-push
+  paths:
+    - .terraform/*.*
+  
+variables:
+  S3_BUCKET_SSM: 'terrformback-bucket'
+  S3_FOLDER_SSM: 'terrformback-bucket-dev'
+stages:
+  # - setupenv
+  - validate
+  - plan
+  - apply
+  - destroy
+
+
+before_script:
+  - apk add --no-cache bash
+  - apk add --no-cache parallel
+  - apk add --no-cache aws-cli
+  - aws s3 ls
+  - S3_BE_BUCKET=$(aws ssm get-parameter --name "${S3_BUCKET_SSM}"  --query 'Parameter.Value' --output text)
+  - echo $S3_BE_BUCKET
+  - S3_BE_FOLDER=$(aws ssm get-parameter --name "${S3_FOLDER_SSM}"  --query 'Parameter.Value' --output text)
+  - echo $S3_BE_FOLDER
+  - terraform init  -backend-config="bucket=${S3_BE_BUCKET}" -backend-config="key=${S3_BE_FOLDER}/$CI_PROJECT_NAME/$CI_COMMIT_REF_NAME" -backend-config="region=ap-south-1"
+
+
+validate:
+  stage: validate 
+  script: 
+    - ls -alh
+    - echo "$CI_COMMIT_REF_NAME.tfvars"
+    - terraform validate 
+  tags:
+    - aws
+
+plan:
+  stage: plan
+  script: terraform plan -var-file "$CI_COMMIT_REF_NAME.tfvars" -out=plan.out
+  tags:
+    - aws
+  artifacts:
+    when: on_success
+    expire_in: "30 days"
+    paths:
+      - "plan.out"
+
+apply:
+  stage: apply
+  script: terraform apply  -auto-approve  plan.out
+  tags:
+    - aws
+  when: manual
+
+destroy:
+  stage: destroy
+  script: terraform destroy  -auto-approve  -var-file "$CI_COMMIT_REF_NAME.tfvars"
+  tags:
+    - aws
+  when: manual

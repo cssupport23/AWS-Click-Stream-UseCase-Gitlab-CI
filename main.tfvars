@@ -1,0 +1,12 @@
+instance_type = "t2.micro"
+ami = "ami-08718895af4dfa033"
+stream_name = "clickstream_test"
+shard_count = 1
+retention_period= 24
+firehose_name = "clickstream_firehose"
+s3_bucket_name = "clickstreamtestbucket"
+buffering_size = 1
+buffering_interval = 60
+s3_prefix = "clickstream-data"
+user_name = "snowpipeuser"
+sns_email = "email@gmail.com" #change your email here 
