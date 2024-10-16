@@ -64,3 +64,32 @@ module "ops" {
 
 These modularized components ensure scalability and separation of concerns, making it easy to manage and update each aspect of the system independently, from S3 data storage to Kinesis streaming and Snowflake ingestion with Snowpipe.
 
+### GitLab CI Integration
+
+In this Terraform implementation, GitLab CI is leveraged for Continuous Integration (CI) and Continuous Deployment (CD). The pipeline employs a branching strategy that dynamically determines which variable file to use for each branch. The variable file (`$CI_COMMIT_REF_NAME.tfvars`) is passed to Terraform commands such as `terraform plan` and `terraform apply`, allowing different branches to manage separate sets of infrastructure configurations.
+
+Each pipeline stage (validate, plan, apply, and destroy) uses the appropriate variable file, ensuring environment-specific parameters are applied based on the branch name. Additionally, S3 bucket and folder configurations for Terraform backend state storage are fetched dynamically from AWS SSM using environment variables (`S3_BUCKET_SSM` and `S3_FOLDER_SSM`). The pipeline’s caching policy ensures efficient use of Terraform state files and modules across different CI/CD jobs, making it highly reusable and scalable for managing infrastructure.
+
+### GitLab CI Pipeline Stages
+
+The GitLab CI pipeline for this Terraform infrastructure consists of the following stages:
+
+1. **Before Script**:
+   - **Initial Setup**: Several dependencies (`bash`, `parallel`, and `aws-cli`) are installed.
+   - **Backend Configuration**: The Terraform backend is dynamically initialized by retrieving the S3 bucket and folder names from AWS SSM. This ensures the state files are stored in the correct S3 bucket based on the environment (`dev`, `staging`, `prod`) derived from the branch. This can be part of the custom image as well.
+
+2. **Validate Stage**:
+   - **Validation Check**: This stage ensures that the Terraform configuration files are syntactically correct and can be applied. It uses the branch-specific variable file, checking the correctness of the infrastructure code (`terraform validate`).
+   - **Branch-Specific Variables**: The variable file is dynamically determined by the branch name (`$CI_COMMIT_REF_NAME.tfvars`), allowing validation against environment-specific configurations.
+
+3. **Plan Stage**:
+   - **Planning**: In this stage, Terraform creates an execution plan (`plan.out`) by comparing the current state of the infrastructure with the desired state. The plan details the changes Terraform would make to bring the infrastructure in line with the configuration in the `.tfvars` file for the current branch.
+   - **Artifacts**: The execution plan is stored as an artifact and retained for 30 days, allowing it to be applied or reviewed later.
+
+4. **Apply Stage**:
+   - **Deployment**: If the `plan.out` file is approved manually, Terraform applies the changes described in the plan to the infrastructure (`terraform apply`). This ensures that the infrastructure is updated to match the desired state, as specified in the branch-specific `.tfvars` file.
+
+5. **Destroy Stage**:
+   - **Tear Down**: In this manual stage, Terraform destroys all resources specified in the variable file (`terraform destroy`). This stage is used when you want to clean up the infrastructure for a particular environment or branch.
+
+The GitLab pipeline’s dynamic nature, combined with the use of SSM for backend configuration and branch-specific `.tfvars` files, ensures the infrastructure can be validated, deployed, and destroyed efficiently across different environments, all from a single pipeline.
